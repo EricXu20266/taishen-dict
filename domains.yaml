@@ -1,0 +1,138 @@
+# domains.yaml — 领域配置
+
+# 格式说明：
+#   name: 领域英文标识（输出文件名 name.txt）
+#   display: 中文展示名
+#   wiki_categories: 维基百科分类列表（中文维基 Category: 前缀）
+#   max_depth: 子分类递归深度（0=仅本分类, 2=两层子分类）
+
+domains:
+  computer:
+    display: "计算机"
+    wiki_categories:
+      - Category:计算机科学
+      - Category:软件
+    max_depth: 2
+
+  math:
+    display: "数学"
+    wiki_categories:
+      - Category:数学
+    max_depth: 2
+
+  physics:
+    display: "物理"
+    wiki_categories:
+      - Category:物理学
+    max_depth: 2
+
+  chemistry:
+    display: "化学化工"
+    wiki_categories:
+      - Category:化学
+    max_depth: 2
+
+  biology:
+    display: "生物"
+    wiki_categories:
+      - Category:生物学
+    max_depth: 2
+
+  geography:
+    display: "地理地质"
+    wiki_categories:
+      - Category:地理学
+      - Category:地质学
+    max_depth: 2
+
+  astronomy:
+    display: "天文"
+    wiki_categories:
+      - Category:天文学
+    max_depth: 2
+
+  meteorology:
+    display: "气象"
+    wiki_categories:
+      - Category:气象学
+    max_depth: 2
+
+  idiom:
+    display: "成语"
+    wiki_categories:
+      - Category:成语
+    max_depth: 1
+
+  medical:
+    display: "医学"
+    wiki_categories:
+      - Category:医学
+      - Category:药理学
+    max_depth: 2
+
+  law:
+    display: "法律"
+    wiki_categories:
+      - Category:法律
+    max_depth: 2
+
+  economics:
+    display: "经济金融"
+    wiki_categories:
+      - Category:经济学
+      - Category:金融
+    max_depth: 2
+
+  philosophy:
+    display: "哲学"
+    wiki_categories:
+      - Category:哲学
+    max_depth: 2
+
+  history:
+    display: "历史"
+    wiki_categories:
+      - Category:历史
+    max_depth: 2
+
+  literature:
+    display: "文学"
+    wiki_categories:
+      - Category:文学
+    max_depth: 2
+
+  sport:
+    display: "体育"
+    wiki_categories:
+      - Category:体育
+    max_depth: 2
+
+  military:
+    display: "军事"
+    wiki_categories:
+      - Category:军事学
+    max_depth: 2
+
+  agriculture:
+    display: "农业"
+    wiki_categories:
+      - Category:农业
+    max_depth: 2
+
+  art:
+    display: "艺术"
+    wiki_categories:
+      - Category:艺术
+    max_depth: 2
+
+  food:
+    display: "饮食"
+    wiki_categories:
+      - Category:饮食
+    max_depth: 2
+
+  psychology:
+    display: "心理学"
+    wiki_categories:
+      - Category:心理学
+    max_depth: 2
