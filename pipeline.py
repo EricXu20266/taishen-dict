@@ -16,6 +16,9 @@
   domains.yaml   — 领域 → 维基百科分类映射
   curate/boost.yaml  — 打字高频词加成
   curate/demote.yaml — 新闻虚高词降权
+
+依赖：
+  pip install pyyaml pypinyin zhconv
 """
 
 import math
@@ -23,6 +26,7 @@ import os
 import sys
 
 import yaml
+from zhconv import convert
 
 from sources import jieba, wiki
 from output import sqlite, domains as out_domains, domains_db
@@ -62,6 +66,50 @@ def compress_freq(raw_freq: int, max_raw: int) -> int:
         return 1
     v = int(MAX_FREQ * math.log10(raw_freq) / math.log10(max_raw))
     return max(1, min(MAX_FREQ, v))
+
+
+# ─── V0.5.5 简繁归一化（源头治理：构建时转简体，不靠引擎运行时转换）───
+
+def is_garbage_char(c: str) -> bool:
+    """乱码字符判定：CJK 区、zhconv 简繁都不认、且不在 GB2312 简体字集。
+
+    覆盖 UTF-8→GBK→Unicode mojibake（紝/鐨/剉 类）中 zhconv 无法还原的字。
+    zhconv 能映射的乱码字（紝→纴、鏈→链）会先转成合法简体，不在此判定。
+    代价：zhconv 不认识的合法生僻字（姞 等）会被过滤——价值低（打不出/垫底），可接受。
+    """
+    if ord(c) < 0x4E00:
+        return False
+    if convert(c, "zh-cn") != c:
+        return False  # 繁体/异体，可转换
+    if convert(c, "zh-tw") != c:
+        return False  # zhconv 认识（简体/简繁同形）
+    try:
+        c.encode("gb2312")
+        return False  # 在 GB2312 简体字集
+    except UnicodeEncodeError:
+        return True
+
+
+def simplify_entries(
+    entries: list[tuple[str, str, int]],
+) -> list[tuple[str, str, int]]:
+    """繁→简归一化 + 乱码过滤 + 同词去重（保留最高频）。
+
+    entries: [(word, pinyin, freq)] → 同上（word 已转简体）。
+    繁体词条（我們→我们）与已有简体词条合并，保留频次高的；
+    转简后仍含乱码字符的词条丢弃。
+    """
+    out: dict[str, tuple[str, int]] = {}
+    for word, pinyin, freq in entries:
+        w = convert(word, "zh-cn")
+        if any(is_garbage_char(c) for c in w):
+            continue  # 乱码词条丢弃
+        if w in out:
+            if freq > out[w][1]:
+                out[w] = (pinyin, freq)
+        else:
+            out[w] = (pinyin, freq)
+    return [(w, py, f) for w, (py, f) in out.items()]
 
 
 def main():
@@ -115,6 +163,16 @@ def main():
             wiki_added += 1
     print(f"  jieba 基底: {len(jieba_entries):,}, Wiki 补充: {wiki_added:,}, 合并: {len(merged):,}")
 
+    # ── 4.1 简繁归一化（V0.5.5 源头治理）──
+    # 繁体词条（我們/側視，源自 jieba 词典 + 维基）构建时统一转简体，
+    # 乱码词条过滤，同词去重。引擎不再依赖运行时转换。
+    print("\n── 4.1/5 简繁归一化 ──")
+    merged_list = [(w, py, f) for w, (py, f) in merged.items()]
+    simplified = simplify_entries(merged_list)
+    trad_dropped = len(merged_list) - len(simplified)
+    merged = {w: (py, f) for w, py, f in simplified}
+    print(f"  归一化前: {len(merged_list):,}, 归一化后: {len(simplified):,}, 过滤/去重: {trad_dropped:,}")
+
     # 应用 boost/demote
     max_raw = max(f for _, f in merged.values()) if merged else 1
     for word, multiplier in boost.items():
@@ -143,6 +201,24 @@ def main():
 
     db_path = os.path.join(OUT_DIR, "system_dict.db")
     sqlite.write(entries_out, db_path)
+
+    # ── 4.2 领域词简繁归一化（V0.5.5）──
+    print("\n── 4.2/5 领域词简繁归一化 ──")
+    simplified_domains = 0
+    dropped_domains = 0
+    for name, entry_list in domain_entries.items():
+        cleaned: list[tuple[str, str]] = []
+        for w, py in entry_list:
+            s = convert(w, "zh-cn")
+            if any(is_garbage_char(c) for c in s):
+                dropped_domains += 1
+                continue
+            if s != w:
+                simplified_domains += 1
+            if not any(x == s for x, _ in cleaned):
+                cleaned.append((s, py))
+        domain_entries[name] = cleaned
+    print(f"  领域繁体转简: {simplified_domains:,}, 乱码丢弃: {dropped_domains:,}")
 
     out_domains.write(domain_entries, os.path.join(OUT_DIR, "domains"))
 
