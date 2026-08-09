@@ -1,6 +1,7 @@
 # 泰深词库构建产物（不入库）
 system_dict.db
 system_dict.db.bin
+domains.db
 *.tmp
 *.tmp_scel
 

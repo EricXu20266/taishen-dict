@@ -25,7 +25,7 @@ import sys
 import yaml
 
 from sources import jieba, wiki
-from output import sqlite, domains as out_domains
+from output import sqlite, domains as out_domains, domains_db
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(ROOT, "output")
@@ -146,11 +146,16 @@ def main():
 
     out_domains.write(domain_entries, os.path.join(OUT_DIR, "domains"))
 
+    # ── 5.5 domains.db（V0.5+）──
+    print("\n── 5.5/5 domains.db ──")
+    domains_db.write(os.path.join(OUT_DIR, "domains"))
+
     # ── 完成 ──
     print("\n" + "=" * 60)
     print("  构建完成")
     print(f"  系统词库: {db_path}  ({len(entries_out):,} 条)")
     print(f"  领域词库: {OUT_DIR}/domains/  ({len(domain_entries)} 个领域)")
+    print(f"  领域 DB:  {OUT_DIR}/domains/domains.db")
     print("=" * 60)
 
 
