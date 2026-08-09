@@ -90,6 +90,34 @@ def is_garbage_char(c: str) -> bool:
         return True
 
 
+def split_simp_trad(
+    entries: list[tuple[str, str, int]],
+) -> tuple[list[tuple[str, str, int]], list[tuple[str, str, int]]]:
+    """简繁分集：按"含繁体独有字"拆分（V0.5.6）。
+
+    entries: [(word, pinyin, freq)] → (简体列表, 繁体原文列表)。
+    繁体词条（我們/側視）保留原文进 trad 表，不转简丢弃（简繁双体需要）；
+    乱码词条（zhconv 不认 + 不在 GB2312）过滤丢弃。
+    """
+    simp: list[tuple[str, str, int]] = []
+    trad: list[tuple[str, str, int]] = []
+    for word, pinyin, freq in entries:
+        if any(is_garbage_char(c) for c in word):
+            continue  # 乱码词条丢弃
+        if _has_trad_char(word):
+            trad.append((word, pinyin, freq))
+        else:
+            simp.append((word, pinyin, freq))
+    return simp, trad
+
+
+def _has_trad_char(word: str) -> bool:
+    """词含繁体独有字（zhconv 转简变化 + 有可识别繁体）"""
+    if convert(word, "zh-cn") == word:
+        return False
+    return any(ord(c) >= 0x4E00 and convert(c, "zh-cn") != c for c in word)
+
+
 def simplify_entries(
     entries: list[tuple[str, str, int]],
 ) -> list[tuple[str, str, int]]:
@@ -163,15 +191,14 @@ def main():
             wiki_added += 1
     print(f"  jieba 基底: {len(jieba_entries):,}, Wiki 补充: {wiki_added:,}, 合并: {len(merged):,}")
 
-    # ── 4.1 简繁归一化（V0.5.5 源头治理）──
-    # 繁体词条（我們/側視，源自 jieba 词典 + 维基）构建时统一转简体，
-    # 乱码词条过滤，同词去重。引擎不再依赖运行时转换。
-    print("\n── 4.1/5 简繁归一化 ──")
+    # ── 4.1 简繁分集（V0.5.6，Eric 决策：简繁隔离不转简丢弃）──
+    # 繁体词条（我們/側視，源自 jieba 词典 + 维基）保留原文进 system_dict_trad 表；
+    # 简体词条进 system_dict 表；乱码词条过滤。引擎繁体模式优先查 trad 表。
+    print("\n── 4.1/5 简繁分集 ──")
     merged_list = [(w, py, f) for w, (py, f) in merged.items()]
-    simplified = simplify_entries(merged_list)
-    trad_dropped = len(merged_list) - len(simplified)
-    merged = {w: (py, f) for w, py, f in simplified}
-    print(f"  归一化前: {len(merged_list):,}, 归一化后: {len(simplified):,}, 过滤/去重: {trad_dropped:,}")
+    simp_list, trad_list = split_simp_trad(merged_list)
+    merged = {w: (py, f) for w, py, f in simp_list}
+    print(f"  简体: {len(simp_list):,}, 繁体(原文保留): {len(trad_list):,}, 乱码过滤: {len(merged_list) - len(simp_list) - len(trad_list):,}")
 
     # 应用 boost/demote
     max_raw = max(f for _, f in merged.values()) if merged else 1
@@ -200,7 +227,9 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
 
     db_path = os.path.join(OUT_DIR, "system_dict.db")
-    sqlite.write(entries_out, db_path)
+    # V0.5.6 简繁分集：简体表 + 繁体原文表
+    trad_out = [(w, py, f) for w, py, f in trad_list]
+    sqlite.write(entries_out, db_path, trad_out)
 
     # ── 4.2 领域词简繁归一化（V0.5.5）──
     print("\n── 4.2/5 领域词简繁归一化 ──")
