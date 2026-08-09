@@ -231,23 +231,24 @@ def main():
     trad_out = [(w, py, f) for w, py, f in trad_list]
     sqlite.write(entries_out, db_path, trad_out)
 
-    # ── 4.2 领域词简繁归一化（V0.5.5）──
-    print("\n── 4.2/5 领域词简繁归一化 ──")
-    simplified_domains = 0
+    # ── 4.2 领域词乱码过滤（V0.5.6 简繁分集）──
+    # 繁体词条保留原文（简繁双体需要），domains_db.py 输出时自动分集
+    # （domain_words 简体 + domain_words_trad 繁体原文）。
+    print("\n── 4.2/5 领域词乱码过滤 ──")
     dropped_domains = 0
     for name, entry_list in domain_entries.items():
         cleaned: list[tuple[str, str]] = []
+        seen = set()
         for w, py in entry_list:
-            s = convert(w, "zh-cn")
-            if any(is_garbage_char(c) for c in s):
+            if any(is_garbage_char(c) for c in w):
                 dropped_domains += 1
                 continue
-            if s != w:
-                simplified_domains += 1
-            if not any(x == s for x, _ in cleaned):
-                cleaned.append((s, py))
+            key = (w, py)
+            if key not in seen:
+                seen.add(key)
+                cleaned.append((w, py))
         domain_entries[name] = cleaned
-    print(f"  领域繁体转简: {simplified_domains:,}, 乱码丢弃: {dropped_domains:,}")
+    print(f"  乱码丢弃: {dropped_domains:,}（繁体原文保留，输出时分集）")
 
     out_domains.write(domain_entries, os.path.join(OUT_DIR, "domains"))
 
