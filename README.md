@@ -24,8 +24,10 @@ taishen-dict/
 ├── output/
 │   ├── sqlite.py            # 生成 system_dict.db
 │   ├── domains.py           # 按领域导出 txt
-│   └── system_dict.db       # ← 构建产物（gitignore）
-│   └── domains/             # ← 构建产物（gitignore）
+│   ├── domains_db.py        # domains/*.txt → domains.db（引擎 V0.5+ 优先加载）
+│   ├── system_dict.db       # ← 构建产物（gitignore）
+│   ├── domains/             # ← 构建产物（gitignore）
+│   │   └── domains.db       # ← 构建产物（gitignore）
 └── tmp/                     # 缓存（gitignore）
 ```
 
@@ -43,12 +45,13 @@ pip install pypinyin pyyaml
 python pipeline.py
 ```
 
-一条命令跑完全量：下载 jieba 词典 → 采集 Wikipedia 领域词条 → 注音 → 频次调校 → 输出。
+一条命令跑完全量：下载 jieba 词典 → 采集 Wikipedia 领域词条 → 注音 → 频次调校 → 输出 system_dict.db + domains/*.txt + domains.db。
 
 ### 输出
 
 - `output/system_dict.db` — SQLite 系统词库（pinyin / word / frequency）
-- `output/domains/*.txt` — 领域词库（词\t拼音，引擎运行时加载）
+- `output/domains/*.txt` — 领域词库（词\t拼音，源数据）
+- `output/domains/domains.db` — 领域词库 SQLite（引擎 V0.5+ 优先加载）
 
 复制到 taishenIME 的 `resources/` 目录即可。
 
