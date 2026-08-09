@@ -56,8 +56,9 @@ def write(out_dir: str, db_path: str | None = None) -> str:
                 if len(parts) < 2:
                     continue
                 word, pinyin = parts[0], parts[1]
-                if not pinyin or not pinyin.isascii() or not pinyin.islower():
+                if not pinyin or not pinyin.isascii():
                     continue
+                pinyin = pinyin.lower()
                 conn.execute(
                     "INSERT OR IGNORE INTO domain_words VALUES (?,?,?,?)",
                     (word, pinyin, domain_id, domain_name),
