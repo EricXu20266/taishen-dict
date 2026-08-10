@@ -141,13 +141,55 @@ def _check_db(path: str, need: list[str]) -> bool:
         conn.close()
 
 
+def _check_common_db() -> bool:
+    """common.db 校验：rank 连续 + 与源 txt 条数对账（防 txt 改了 db 没重建）。"""
+    db_path = os.path.join(ROOT, "output", "common.db")
+    txt_path = os.path.join(ROOT, "curate", "common_dict.txt")
+    if not os.path.exists(db_path):
+        print(f"  [FAIL] 缺失产物: {db_path}")
+        return False
+
+    conn = sqlite3.connect(db_path)
+    try:
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "common_words" not in have:
+            print(f"  [FAIL] {db_path}: 缺表 common_words")
+            return False
+        n = conn.execute("SELECT COUNT(*) FROM common_words").fetchone()[0]
+        if n == 0:
+            print("  [FAIL] common.db::common_words: 空表")
+            return False
+        # rank 必须 0..n-1 连续（行序优先级完整性；rank 为 PK 天然无重复）
+        mn, mx = conn.execute(
+            "SELECT MIN(rank), MAX(rank) FROM common_words").fetchone()
+        if mn != 0 or mx != n - 1:
+            print(f"  [FAIL] common.db::common_words: rank 不连续"
+                  f"（min={mn} max={mx} 期望 0..{n - 1}）——优先级行序被破坏")
+            return False
+        # 与源 txt 条数对账
+        txt_n = 0
+        with open(txt_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.lstrip("\ufeff").strip()
+                if line and not line.startswith("#") and "\t" in line:
+                    txt_n += 1
+        if txt_n != n:
+            print(f"  [FAIL] common.db::common_words: {n} 条 vs 源 txt {txt_n} 条——不一致，需重建")
+            return False
+        print(f"  [OK]   common.db::common_words: {n} 条, rank 0..{n-1} 连续, 与源 txt 对账一致")
+        return True
+    finally:
+        conn.close()
+
+
 def main() -> bool:
-    print("══ 词库简繁分集校验 ══")
+    print("══ 词库校验 ══")
     ok = True
     ok &= _check_db(os.path.join(ROOT, "output", "system_dict.db"),
                     ["system_dict", "system_dict_trad"])
     ok &= _check_db(os.path.join(ROOT, "output", "domains", "domains.db"),
                     ["domain_words", "domain_words_trad"])
+    ok &= _check_common_db()
     print("══ " + ("校验通过" if ok else "校验失败") + " ══")
     return ok
 
