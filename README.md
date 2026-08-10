@@ -16,20 +16,21 @@
 taishen-dict/
 ├── pipeline.py              # 一条命令：采集 → 清洗 → 注音 → 融合 → 简繁分集 → 输出 → 校验
 ├── domains.yaml             # 领域 → 维基百科分类映射（增删领域改这个）
-├── curate/
+├── curate/                     # 人工维护源（入库）——语义：一切不可重建的人工数据
 │   ├── boost.yaml           # 打字高频词加成表（Eric 手动维护）
 │   ├── demote.yaml          # 新闻虚高词降权表
-│   └── common_dict.txt      # 常用词优先级表（pinyin<TAB>word，行序=优先级，P2 层）
+│   ├── common_dict.txt      # 常用词优先级表（pinyin<TAB>word，行序=优先级，P2 层）
+│   └── domains/             # 领域源 txt（14 个，不可重建：thuocl_* 11 + conversation/modern/network_slang）
 ├── sources/
 │   ├── jieba.py             # jieba 词典采集（MIT）
 │   └── wiki.py              # Wikipedia 领域词条采集（CC BY-SA）
-├── output/
+├── output/                    # 纯构建产物（gitignore）——语义：一切可由 pipeline 重建的
 │   ├── sqlite.py            # 生成 system_dict.db（简体 + 繁体原文双表）
 │   ├── domains.py           # 按领域导出 txt
 │   ├── domains_db.py        # domains/*.txt → domains.db（简繁双表，引擎 V0.5+ 优先加载）
 │   ├── system_dict.db       # ← 构建产物（gitignore）
 │   ├── common.db            # ← 构建产物（gitignore）
-│   ├── domains/             # 领域源数据 txt（入库） + domains.db（gitignore）
+│   ├── domains/             # 21 wiki 领域 txt（重建产物）+ 14 源 txt（构建时从 curate 合并）+ domains.db
 │   │   └── domains.db       # ← 构建产物（gitignore）
 ├── tools/
 │   ├── build_common_db.py   # curate/common_dict.txt → common.db（rank 行序）
@@ -58,7 +59,7 @@ python pipeline.py
 ### 输出
 
 - `output/system_dict.db` — 系统词库 SQLite，双表：`system_dict`（简体，pinyin/word/frequency）+ `system_dict_trad`（繁体原文）
-- `output/domains/*.txt` — 领域词库源数据（词\t拼音；wiki 领域由 pipeline 重建，thuocl/conversation/modern/network_slang 为手工维护源）
+- `output/domains/*.txt` — 领域词库 txt（21 个 wiki 领域由 pipeline 重建，14 个源 txt 构建时从 `curate/domains/` 合并，构建后目录共 35 个）
 - `output/domains/domains.db` — 领域词库 SQLite，双表：`domain_words` + `domain_words_trad`
 - `output/common.db` — 常用词库 SQLite：`common_words(rank, pinyin, word)`，rank 行序即 P2 层优先级
 
@@ -77,7 +78,7 @@ python pipeline.py
 
 21 领域（`domains.yaml`）：计算机 / 数学 / 物理 / 化学化工 / 生物 / 地理地质 / 天文 / 气象 / 成语 / 医学 / 法律 / 经济金融 / 哲学 / 历史 / 文学 / 体育 / 军事 / 农业 / 艺术 / 饮食 / 心理学
 
-另含 THUOCL 13 领域 + conversation / modern / network_slang 补充源（手工维护，共 35 个 txt）。
+另含 THUOCL 13 领域 + conversation / modern / network_slang 补充源（手工维护，存于 `curate/domains/`，构建时合并进产物）。
 
 ## 频次调校
 

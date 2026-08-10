@@ -23,6 +23,7 @@
 
 import math
 import os
+import shutil
 import sys
 
 import yaml
@@ -251,6 +252,21 @@ def main():
     print(f"  乱码丢弃: {dropped_domains:,}（繁体原文保留，输出时分集）")
 
     out_domains.write(domain_entries, os.path.join(OUT_DIR, "domains"))
+
+    # ── 5.4 合并源 txt（V0.5.7 目录分离）──
+    # curate/domains/ = 人工维护源（thuocl/conversation/modern/network_slang，
+    # 不可重建，入库）；output/domains/ = wiki 重建产物（gitignore）。
+    # 构建 domains.db 前把源合并进产物目录——domains.db 从 output/domains/ 读全部 txt。
+    print("\n── 5.4/6 合并源 txt ──")
+    src_dir = os.path.join(ROOT, "curate", "domains")
+    if os.path.isdir(src_dir):
+        merged = 0
+        for fn in sorted(os.listdir(src_dir)):
+            if fn.endswith(".txt"):
+                shutil.copy(os.path.join(src_dir, fn),
+                            os.path.join(OUT_DIR, "domains", fn))
+                merged += 1
+        print(f"  源 txt 合并: {merged} 个")
 
     # ── 5.5 domains.db（V0.5+）──
     print("\n── 5.5/5 domains.db ──")
