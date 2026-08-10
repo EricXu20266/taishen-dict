@@ -21,9 +21,12 @@
   pip install pyyaml pypinyin zhconv
 """
 
+import hashlib
+import json
 import math
 import os
 import shutil
+import subprocess
 import sys
 
 import yaml
@@ -59,6 +62,84 @@ def load_domains_config() -> dict[str, dict]:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return data.get("domains", {})
+
+
+# ─── 词库版本控制（V0.5.7+）───
+
+def _sha256(path: str) -> str:
+    """文件 SHA256（分块，防大文件占内存）。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _table_counts(db_path: str) -> dict[str, int]:
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    out = {r[0]: conn.execute(f"SELECT COUNT(*) FROM {r[0]}").fetchone()[0]
+           for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+           if not r[0].startswith("sqlite")}
+    conn.close()
+    return out
+
+
+def _git_commit() -> str:
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=ROOT, timeout=5,
+        ).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def next_version() -> str:
+    """版本号：V{YYYY}.{MM}.{DD}.{n}（同日递增序号）。"""
+    from datetime import datetime
+
+    today = datetime.now().strftime("%Y.%m.%d")
+    old = os.path.join(OUT_DIR, "VERSION.json")
+    n = 0
+    if os.path.exists(old):
+        try:
+            with open(old, encoding="utf-8") as f:
+                prev = json.load(f).get("version", "")
+            if prev.startswith(today + "."):
+                n = int(prev.rsplit(".", 1)[-1])
+        except Exception:
+            n = 0
+    return f"{today}.{n + 1}"
+
+
+def write_version() -> str:
+    """生成 VERSION.json（版本号 + git commit + 各词库 sha256/条数）。"""
+    from datetime import datetime
+
+    version = next_version()
+    manifest = {
+        "version": version,
+        "built_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "git_commit": _git_commit(),
+        "dicts": {},
+    }
+    for rel in ("system_dict.db", "domains/domains.db", "common.db"):
+        path = os.path.join(OUT_DIR, rel)
+        if not os.path.exists(path):
+            continue
+        entry = {"sha256": _sha256(path), "size": os.path.getsize(path)}
+        counts = _table_counts(path)
+        if counts:
+            entry["rows"] = counts
+        manifest["dicts"][rel] = entry
+
+    path = os.path.join(OUT_DIR, "VERSION.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    print(f"  [output] {path}: {version}（git {manifest['git_commit']}）")
+    return version
 
 
 def compress_freq(raw_freq: int, max_raw: int) -> int:
@@ -290,9 +371,16 @@ def main():
     if not verify_build():
         sys.exit("校验失败：词库简繁分集不完整，构建中止（详见上方报告）")
 
+    # ── 6.5 版本清单（V0.5.7 词库版本控制）──
+    # 校验通过后生成 VERSION.json：版本号 + git commit + 各词库 sha256/条数。
+    # sync_to_ime.py 同步前按此清单对账，保证"同步的是本轮产物"。
+    print("\n── 6.5/6 版本清单 ──")
+    version = write_version()
+
     # ── 完成 ──
     print("\n" + "=" * 60)
     print("  构建完成")
+    print(f"  版本:    {version}")
     print(f"  系统词库: {db_path}  ({len(entries_out):,} 条)")
     print(f"  领域词库: {OUT_DIR}/domains/  ({len(domain_entries)} 个领域)")
     print(f"  领域 DB:  {OUT_DIR}/domains/domains.db")
