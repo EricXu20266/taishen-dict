@@ -104,7 +104,7 @@ domains:
   sport:
     display: "体育"
     wiki_categories:
-      - Category:体育
+      - Category:体育运动
     max_depth: 2
 
   military:
@@ -128,7 +128,8 @@ domains:
   food:
     display: "饮食"
     wiki_categories:
-      - Category:饮食
+      - Category:食品
+      - Category:烹饪
     max_depth: 2
 
   psychology:
