@@ -256,6 +256,15 @@ def main():
     print("\n── 5.5/5 domains.db ──")
     domains_db.write(os.path.join(OUT_DIR, "domains"))
 
+    # ── 5.7 common.db（V0.5.7+，P2 层常用词库）──
+    # common 是人工优先级表（curate/common_dict.txt，行序即优先级），
+    # 不参与 jieba/wiki 融合，仅做 txt → db 转换。
+    print("\n── 5.7/6 common.db ──")
+    from tools.build_common_db import build as build_common
+
+    build_common(os.path.join(ROOT, "curate", "common_dict.txt"),
+                 os.path.join(OUT_DIR, "common.db"))
+
     # ── 6. 校验阀门（V0.5.6 防简繁分集回归）──
     # 断言双表存在 + 简体表无繁体独有字；失败则中止构建，
     # 避免产出"混在一起"的单表词库被复制进 IME。
@@ -271,6 +280,7 @@ def main():
     print(f"  系统词库: {db_path}  ({len(entries_out):,} 条)")
     print(f"  领域词库: {OUT_DIR}/domains/  ({len(domain_entries)} 个领域)")
     print(f"  领域 DB:  {OUT_DIR}/domains/domains.db")
+    print(f"  常用 DB:  {OUT_DIR}/common.db")
     print("=" * 60)
 
 
