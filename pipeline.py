@@ -256,6 +256,15 @@ def main():
     print("\n── 5.5/5 domains.db ──")
     domains_db.write(os.path.join(OUT_DIR, "domains"))
 
+    # ── 6. 校验阀门（V0.5.6 防简繁分集回归）──
+    # 断言双表存在 + 简体表无繁体独有字；失败则中止构建，
+    # 避免产出"混在一起"的单表词库被复制进 IME。
+    print("\n── 6/6 校验 ──")
+    from tools.verify_build import main as verify_build
+
+    if not verify_build():
+        sys.exit("校验失败：词库简繁分集不完整，构建中止（详见上方报告）")
+
     # ── 完成 ──
     print("\n" + "=" * 60)
     print("  构建完成")
