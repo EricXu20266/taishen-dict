@@ -2,6 +2,7 @@
 system_dict.db
 system_dict.db.bin
 domains.db
+common.db
 *.tmp
 *.tmp_scel
 
