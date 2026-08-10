@@ -54,7 +54,15 @@ pip install pypinyin pyyaml zhconv
 python pipeline.py
 ```
 
-一条命令跑完全量：下载 jieba 词典 → 采集 Wikipedia 领域词条 → 注音 → 频次调校 → 简繁分集 → 输出 system_dict.db + domains/*.txt + domains.db + common.db → 校验阀门。
+一条命令跑完全量：下载 jieba 词典 → 采集 Wikipedia 领域词条 → 注音 → 频次调校 → 简繁分集 → 输出 system_dict.db + domains/*.txt + domains.db + common.db → 校验阀门 → 版本清单。
+
+### 同步到 IME
+
+```bash
+python tools/sync_to_ime.py
+```
+
+按 `output/VERSION.json` 清单同步到 taishenIME：同步前对账（产物哈希与清单一致）→ 复制 3 个 db + VERSION + common_dict.txt + 35 个领域 txt → 同步后对账（IME 侧哈希确认）。
 
 ### 输出
 
@@ -62,8 +70,14 @@ python pipeline.py
 - `output/domains/*.txt` — 领域词库 txt（21 个 wiki 领域由 pipeline 重建，14 个源 txt 构建时从 `curate/domains/` 合并，构建后目录共 35 个）
 - `output/domains/domains.db` — 领域词库 SQLite，双表：`domain_words` + `domain_words_trad`
 - `output/common.db` — 常用词库 SQLite：`common_words(rank, pinyin, word)`，rank 行序即 P2 层优先级
+- `output/VERSION.json` — 版本清单：版本号 + git commit + 各词库 sha256/条数（同步脚本据此对账）
 
-复制 `system_dict.db`、`domains.db`、`common.db` 到 taishenIME 的 `resources/` 目录即可（`system_dict.db.bin` 由 IME 侧工具重建）。
+## 词库版本控制
+
+- **版本号**：`V{YYYY}.{MM}.{DD}.{n}`（同日构建自动递增序号），pipeline 校验通过后生成
+- **VERSION.json**：每次构建记录版本号、git commit、三个 db 的 sha256 与表条数
+- **同步即对账**：`sync_to_ime.py` 同步前校验产物哈希 == 清单（防产物被改/清单过期），同步后校验 IME 侧哈希 == 清单（防复制不完整）
+- **IME 侧记录**：`taishenIME/resources/VERSION.json` 存当前词库版本，随同步更新
 
 ## 数据源与许可
 

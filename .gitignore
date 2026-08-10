@@ -5,6 +5,7 @@ system_dict.db.bin
 domains.db
 common.db
 output/domains/*.txt
+VERSION.json
 *.tmp
 *.tmp_scel
 
