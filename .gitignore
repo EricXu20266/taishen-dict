@@ -1,8 +1,10 @@
 # 泰深词库构建产物（不入库）
+# 语义：curate/ = 人工维护源（入库），output/ = 纯构建产物（gitignore）
 system_dict.db
 system_dict.db.bin
 domains.db
 common.db
+output/domains/*.txt
 *.tmp
 *.tmp_scel
 
