@@ -901,8 +901,8 @@ zhejige	这几个
 san'ge'zi	三个字
 # ── A. 副词/连词/书面短语 ──
 jugelizi	举个例子
-fan'guolaijiang	反过来讲
-huan'gejiaodu	换个角度
+fan'guo'lai'jiang	反过来讲
+huan'ge'jiao'du	换个角度
 zuozuoyouyou	左左右右
 
 # ── B. 代词组合/口语 ──
@@ -935,7 +935,7 @@ zenmezuo	怎么做
 zenmebanya	怎么办呀
 xiangshenmene	想什么呢
 shuishuode	谁说的
-zhendejia'de	真的假的
+zhen'de'jia'de	真的假的
 zhendeya	真的呀
 tianna	天哪
 wodetian	我的天
