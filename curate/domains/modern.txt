@@ -182,6 +182,9 @@ token消耗	tokenxiaohao
 秒没	miaomei
 笑不活了	xiaobuhuole
 精致穷	jingzhiqiong
+检索增强	jiansuozengqiang
+上下文工程	shangxiawengongcheng
+班味	banwei
 素人主播	surenzhubo
 红包雨	hongbaoyu
 约拍	yuepai
