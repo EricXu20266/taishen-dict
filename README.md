@@ -20,7 +20,7 @@ taishen-dict/
 │   ├── boost.yaml           # 打字高频词加成表（Eric 手动维护）
 │   ├── demote.yaml          # 新闻虚高词降权表
 │   ├── common_dict.txt      # 常用词优先级表（pinyin<TAB>word，行序=优先级，P2 层）
-│   └── domains/             # 领域源 txt（14 个，不可重建：thuocl_* 11 + conversation/modern/network_slang）
+│   └── domains/             # 领域源 txt（18 个，不可重建）：thuocl_* 11 + conversation/forum_slang/modern/network_slang 4 + computer_extra/sci_extra/proper_noun 3
 ├── sources/
 │   ├── jieba.py             # jieba 词典采集（MIT）
 │   └── wiki.py              # Wikipedia 领域词条采集（CC BY-SA）
@@ -62,12 +62,12 @@ python pipeline.py
 python tools/sync_to_ime.py
 ```
 
-按 `output/VERSION.json` 清单同步到 taishenIME：同步前对账（产物哈希与清单一致）→ 复制 3 个 db + VERSION + common_dict.txt + 35 个领域 txt → 同步后对账（IME 侧哈希确认）。
+按 `output/VERSION.json` 清单同步到 taishenIME：同步前对账（产物哈希与清单一致）→ 复制 3 个 db + VERSION + common_dict.txt + 39 个领域 txt → 同步后对账（IME 侧哈希确认）。
 
 ### 输出
 
 - `output/system_dict.db` — 系统词库 SQLite，双表：`system_dict`（简体，pinyin/word/frequency）+ `system_dict_trad`（繁体原文）
-- `output/domains/*.txt` — 领域词库 txt（21 个 wiki 领域由 pipeline 重建，14 个源 txt 构建时从 `curate/domains/` 合并，构建后目录共 35 个）
+- `output/domains/*.txt` — 领域词库 txt（21 个 wiki 领域由 pipeline 重建，18 个源 txt 构建时从 `curate/domains/` 合并，构建后目录共 39 个）
 - `output/domains/domains.db` — 领域词库 SQLite，双表：`domain_words` + `domain_words_trad`
 - `output/common.db` — 常用词库 SQLite：`common_words(rank, pinyin, word)`，rank 行序即 P2 层优先级
 - `output/VERSION.json` — 版本清单：版本号 + git commit + 各词库 sha256/条数（同步脚本据此对账）
@@ -105,13 +105,23 @@ LLM 筛选提示词见 [tools/collect/classify_prompt.md](tools/collect/classify
 | [jieba](https://github.com/fxsjy/jieba) | 34.9 万词条 + 词频 | MIT | ✅
 | [中文维基百科](https://zh.wikipedia.org) | 领域分类词条 | CC BY-SA 4.0 | ✅（需署名）
 | [pypinyin](https://github.com/mozillazg/python-pinyin) | 汉字拼音注音 | MIT | ✅
-| [THUOCL](https://github.com/thunlp/THUOCL) | 13 领域专业词（thuocl_*.txt） | MIT | ✅
+| [THUOCL](https://github.com/thunlp/THUOCL) | 11 领域专业词（thuocl_*.txt） | MIT | ✅
 
 ## 领域列表
 
 21 领域（`domains.yaml`）：计算机 / 数学 / 物理 / 化学化工 / 生物 / 地理地质 / 天文 / 气象 / 成语 / 医学 / 法律 / 经济金融 / 哲学 / 历史 / 文学 / 体育 / 军事 / 农业 / 艺术 / 饮食 / 心理学
 
-另含 THUOCL 13 领域 + conversation / modern / network_slang 补充源（手工维护，存于 `curate/domains/`，构建时合并进产物）。
+另含 THUOCL 11 领域 + conversation / forum_slang / modern / network_slang 补充源 + 三个采集域，全部手工维护，存于 `curate/domains/`，构建时合并进产物：
+
+| 域 | 内容 | 优先级 |
+|---|---|---|
+| `computer_extra` | 计算机术语（从维基 dumps 筛出） | 热域 `domain_heat=1` |
+| `sci_extra` | 物理 / 化学 / 天文术语 | 热域 `domain_heat=1` |
+| `proper_noun` | 人名 / 地名 / 机构 / 事件 | 非热域 `domain_heat=0`，同长度下排在热域词之后，但打完整拼音仍可命中 |
+
+新增领域时的坑：`pipeline.py` 第 5.4 步是 `shutil.copy(curate/domains/*.txt → output/domains/)`，**同名文件直接覆盖**。`computer` / `physics` 等域是 wiki 采集产物（只在 `output/`），补词必须用独立文件名（如 `computer_extra.txt`），否则下次构建会把 wiki 产物整个覆盖掉。
+
+当前产物规模：`system_dict` 37.3 万词 / `domains` 17.2 万词（39 领域）/ `common` 2034 条。
 
 ## 频次调校
 
