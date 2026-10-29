@@ -125,7 +125,7 @@ def write_version() -> str:
         "git_commit": _git_commit(),
         "dicts": {},
     }
-    for rel in ("system_dict.db", "domains/domains.db", "common.db"):
+    for rel in ("system_dict.db", "domains/domains.db", "common.db", "bigram.db"):
         path = os.path.join(OUT_DIR, rel)
         if not os.path.exists(path):
             continue

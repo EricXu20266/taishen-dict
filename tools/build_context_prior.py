@@ -39,7 +39,7 @@ STOP_WORDS = {
     "从", "到", "上", "下", "中", "个", "这", "那", "有", "没有",
 }
 
-WORD_MIN_LEN, WORD_MAX_LEN = 2, 4
+WORD_MIN_LEN, WORD_MAX_LEN = 1, 4
 
 
 def load_vocab(dict_db: str) -> set:
@@ -117,7 +117,9 @@ def count_pairs(corpus_dir: str, vocab: set, max_len: int) -> Counter:
         for seg_text in split_sentences(text):
             words = segment(seg_text, vocab, max_len)
             for left, right in zip(words, words[1:]):
-                if left in STOP_WORDS or right in STOP_WORDS:
+                # 前词是纯虚词时跳过（「的→X」没有预测价值）；
+                # 后词不过滤——「我们→的」「中→国」这类对拆组排序有用。
+                if left in STOP_WORDS:
                     continue
                 if not (WORD_MIN_LEN <= len(left) <= WORD_MAX_LEN):
                     continue

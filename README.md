@@ -34,6 +34,8 @@ taishen-dict/
 │   │   └── domains.db       # ← 构建产物（gitignore）
 ├── tools/
 │   ├── build_common_db.py   # curate/common_dict.txt → common.db（rank 行序）
+│   ├── build_bigram.py      # 一键：wiki dump 正文 → 语料 → output/bigram.db（低频重建）
+│   ├── build_context_prior.py  # 语料 → 相邻词共现统计（bigram 的统计实现）
 │   ├── verify_build.py      # 校验阀门：双表存在 + 简体表无繁体混入 + common rank 连续
 │   ├── collect_network_slang.py  # 维基网络流行语独立采集（旁路，写入 domains/network_slang.txt）
 │   └── fix_domains.py       # 快速重建单个领域 txt（调试用）
@@ -70,6 +72,7 @@ python tools/sync_to_ime.py
 - `output/domains/*.txt` — 领域词库 txt（21 个 wiki 领域由 pipeline 重建，18 个源 txt 构建时从 `curate/domains/` 合并，构建后目录共 39 个）
 - `output/domains/domains.db` — 领域词库 SQLite，双表：`domain_words` + `domain_words_trad`
 - `output/common.db` — 常用词库 SQLite：`common_words(rank, pinyin, word)`，rank 行序即 P2 层优先级
+- `output/bigram.db` — 搭配表 SQLite（可选）：`context_prior(prev, next, count)`，count 归一化为 1-6 档。供引擎在锚定拆组时给相邻段的词打分（「点击+使用」压过「电机+使用」）。构建见「搭配表（bigram）」节，缺失时引擎按无表降级
 - `output/VERSION.json` — 版本清单：版本号 + git commit + 各词库 sha256/条数（同步脚本据此对账）
 
 ## 词库版本控制
@@ -122,6 +125,30 @@ LLM 筛选提示词见 [tools/collect/classify_prompt.md](tools/collect/classify
 新增领域时的坑：`pipeline.py` 第 5.4 步是 `shutil.copy(curate/domains/*.txt → output/domains/)`，**同名文件直接覆盖**。`computer` / `physics` 等域是 wiki 采集产物（只在 `output/`），补词必须用独立文件名（如 `computer_extra.txt`），否则下次构建会把 wiki 产物整个覆盖掉。
 
 当前产物规模：`system_dict` 37.3 万词 / `domains` 17.2 万词（39 领域）/ `common` 2034 条。
+
+## 搭配表（bigram）
+
+词频解释不了搭配质量：`dianji` + `shiyong` 拆开时，「电机」词频高于「点击」，但真正该出的是「点击使用」。搭配表提供相邻词的共现档位，引擎在锚定拆组时逐段累加，得分高者优先。
+
+```bash
+# 一次性重建（读 3.4 GB dump，5 万页约 20-40 分钟）
+python tools/build_bigram.py --limit 50000
+
+# 语料已在 tmp/corpus 时跳过提取
+python tools/build_bigram.py --reuse-corpus
+```
+
+产物 `output/bigram.db`，表结构 `context_prior(prev, next, count)`，count 为 1-6 档。`pipeline.py` 生成 VERSION.json 时会登记它（存在才登记），`tools/sync_to_ime.py` 随后同步到 taishenIME `resources/bigram.db`。
+
+实测参考：128 MB 语料（约 1.1 万页）→ 40 万对、约 20 MB；引擎侧全量加载约 1.5 秒（后台线程，不阻塞输入法激活）。
+
+两条与 `context_prior.db` 的差别，别混淆：
+
+| | context_prior.db | bigram.db |
+|---|---|---|
+| 用途 | 已上屏前词的上下文联想 | 同一输入串内部拆组打分 |
+| 加载 | 每前词截断 12 条 | 全量不截断（截断会丢掉候选组合里的低频对） |
+| 消费点 | `apply_context_boost` | `group_rec` |
 
 ## 频次调校
 
