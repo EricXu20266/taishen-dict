@@ -79,6 +79,25 @@ python tools/sync_to_ime.py
 - **同步即对账**：`sync_to_ime.py` 同步前校验产物哈希 == 清单（防产物被改/清单过期），同步后校验 IME 侧哈希 == 清单（防复制不完整）
 - **IME 侧记录**：`taishenIME/resources/VERSION.json` 存当前词库版本，随同步更新
 
+## 外部语料采集
+
+除 jieba / 维基分类 / THUOCL 三条基础源外，还有三条**增量采集通道**用于补新词与专名：
+
+| 通道 | 脚本 | 特点 |
+|---|---|---|
+| 维基分类 API | `sources/wiki.py` | 有 429 限流，适合小批量 |
+| 维基 dumps | `tools/collect/wiki_dumps.py` | 离线全量 3.2 GB，自带分类标签 |
+| RSS 新闻 | `tools/collect/news_rss.py` | 时效性最强，19 个中文源已验证 |
+
+采集结果按三档分级入库：
+
+- **A 术语** → 对应领域（在 `is_hot_domain` 白名单内，`domain_heat = 1`，高优先）
+- **B 专名**（人名/地名/机构/事件）→ `proper_noun` 域（非热域 `domain_heat = 0`，低优先但可上屏）
+- **C 碎片** → 丢弃
+
+完整方法论、实测数据与踩坑记录见 [docs/COLLECTION.md](docs/COLLECTION.md)；
+LLM 筛选提示词见 [tools/collect/classify_prompt.md](tools/collect/classify_prompt.md)。
+
 ## 数据源与许可
 
 | 源 | 内容 | 许可 | 商业可用
