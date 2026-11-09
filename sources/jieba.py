@@ -74,7 +74,10 @@ def collect(cache_dir: str = "tmp") -> list[tuple[str, str, int]]:
             n = len(word)
             syls = py_flat[idx : idx + n]
             idx += n
-            py_joined = "".join(s[0] for s in syls if s)
+            # V2026.11：注音保留音节边界（yu'an / xi'an）。
+            # 直接 join 会把 yu+an 压成 yuan，让「预案」与「元」共用索引键，
+            # 跨音节词被当成单音节输入埋掉（引擎侧已按去分隔串建索引，兼容两种格式）。
+            py_joined = "'".join(s[0] for s in syls if s)
             if py_joined and py_joined.isascii() and py_joined.islower():
                 entries.append((word, py_joined, freq))
 

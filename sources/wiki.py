@@ -138,7 +138,8 @@ def collect_domain(
             n = len(word)
             syls = py_flat[idx : idx + n]
             idx += n
-            py_joined = "".join(s[0] for s in syls if s)
+            # V2026.11：保留音节边界（yu'an），与 jieba 源保持一致
+            py_joined = "'".join(s[0] for s in syls if s)
             if py_joined and py_joined.isascii() and py_joined.islower():
                 result.append((word, py_joined, name))
 
