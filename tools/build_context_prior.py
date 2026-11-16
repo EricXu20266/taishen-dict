@@ -49,6 +49,9 @@
 - NOISE_PAIRS：百科结构化标签对（模板/infobox 残留），整对剔除。
 - --per-prev：每个前词最多保留多少条**实词**搭配（按频次降序），提升前词覆盖率。
   只有「后词为多字实词」的对占配额，虚词后词不占。
+- --exclude-words：分词词表排除清单（每行一个词，或 TSV 取第 1 列）。
+  碎片词条降权到 freq=1 后仍在词表里，正向最大匹配照样会切出它们、继续产生碎片对；
+  统计侧必须显式剔除，清理才会真正生效。清单由 tools/analyze_fragments.py 产出。
 """
 
 import argparse
@@ -115,26 +118,60 @@ def has_trad_char(word: str) -> bool:
     return False
 
 
-def load_vocab(dict_db: str) -> tuple:
-    """从系统词库读取词表，并单独取单字词频（判前词单字是否常用）。"""
+def load_vocab(dict_db: str, exclude_path: str = None,
+               seg_max_len: int = WORD_MAX_LEN) -> tuple:
+    """从系统词库读取词表，并单独取单字词频（判前词单字是否常用）。
+
+    exclude_path：碎片词清单（每行「词」或 TSV 首列），这些词不进入分词词表，
+    正向最大匹配就不会再切出它们。
+    seg_max_len：句子级分词的最大匹配长度。默认 4 与历史口径一致；
+    设为 8 时 >4 字的长词（国民生产总值）能被整词切出，再由 inner_pairs 还原内部边界。
+    """
+    excludes = load_exclude_words(exclude_path)
     vocab = set()
+    full_vocab = set()
     single_freq: dict = {}
     conn = sqlite3.connect(dict_db)
     try:
         cur = conn.execute("SELECT word, MAX(frequency) FROM system_dict GROUP BY word")
         for word, freq in cur:
-            if WORD_MIN_LEN <= len(word) <= WORD_MAX_LEN:
-                vocab.add(word)
-                if len(word) == 1:
-                    single_freq[word] = freq
+            size = len(word)
+            if size < WORD_MIN_LEN or size > seg_max_len:
+                continue
+            if size <= WORD_MAX_LEN:
+                full_vocab.add(word)
+            if word in excludes:
+                continue
+            vocab.add(word)
+            if size == 1:
+                single_freq[word] = freq
     except sqlite3.Error as exc:
         sys.exit(f"读取词表失败: {exc}")
     finally:
         conn.close()
     if not vocab:
         sys.exit("词表为空，检查 --dict 是否指向 system_dict.db")
-    print(f"词表: {len(vocab)} 词（单字 {len(single_freq)}）")
-    return vocab, single_freq
+    print(f"词表: {len(vocab)} 词（单字 {len(single_freq)}），排除: {len(excludes)} 词")
+    return vocab, single_freq, full_vocab
+
+
+def load_exclude_words(path: str) -> set:
+    """读排除清单：每行一个词，或 TSV 取第 1 列（跳过表头）。"""
+    if not path:
+        return set()
+    out = set()
+    with open(path, encoding="utf-8") as fh:
+        for i, line in enumerate(fh):
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            word = line.split("\t")[0].strip()
+            if not word:
+                continue
+            if i == 0 and word.lower() == "word":
+                continue
+            out.add(word)
+    return out
 
 
 def iter_corpus(corpus_dir: str):
@@ -226,8 +263,16 @@ def inner_pairs(words: list, vocab: set, max_len: int):
 
 
 def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, noise_filter: bool,
-                single_filter: bool = True, single_freq: dict = None) -> Counter:
-    """统计相邻词共现（同一句内相邻 + 长词内部边界）。"""
+                single_filter: bool = True, single_freq: dict = None,
+                inner_vocab: set = None, inner_max_len: int = None) -> Counter:
+    """统计相邻词共现（同一句内相邻 + 长词内部边界）。
+
+    inner_vocab：长词内部再切分用的词表。碎片清理时句子级分词剔除碎片，
+    但长词内部边界仍按完整词表还原——否则「巴塞罗那」这类整词的内部证据
+    （巴塞→罗那）会随碎片一起消失。
+    """
+    inner_vocab = inner_vocab if inner_vocab is not None else vocab
+    inner_max_len = inner_max_len or max_len
     pairs: Counter = Counter()
     files = 0
     dropped_trad = 0
@@ -276,7 +321,7 @@ def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, no
                 if keep(left, right):
                     pairs[(left, right)] += 1
             # 整词内部的词边界也是真实搭配，额外补一层（不替换原整词词对）
-            for left, right in inner_pairs(words, vocab, max_len):
+            for left, right in inner_pairs(words, inner_vocab, inner_max_len):
                 if keep(left, right):
                     pairs[(left, right)] += 1
     print(f"语料文件: {files}，候选搭配: {len(pairs)}"
@@ -384,15 +429,21 @@ def main():
                         help="关闭结构化标签对过滤（默认开启）")
     parser.add_argument("--no-single-filter", action="store_true",
                         help="关闭双单字对剔除（默认开启：两边都是单字的对整对丢弃）")
+    parser.add_argument("--exclude-words", default=None,
+                        help="分词词表排除清单（每行一个词或 TSV 首列），碎片清理用")
+    parser.add_argument("--segment-max-len", type=int, default=0,
+                        help="句子级分词最大匹配长度（默认 = --max-word-len；8 可整词切出长词）")
     args = parser.parse_args()
 
     if not os.path.isdir(args.corpus):
         sys.exit(f"语料目录不存在: {args.corpus}")
 
-    vocab, single_freq = load_vocab(args.dict)
-    pairs = count_pairs(args.corpus, vocab, args.max_word_len,
+    seg_max = args.segment_max_len or args.max_word_len
+    vocab, single_freq, full_vocab = load_vocab(args.dict, args.exclude_words, seg_max)
+    pairs = count_pairs(args.corpus, vocab, seg_max,
                         not args.no_trad_filter, not args.no_noise_filter,
-                        not args.no_single_filter, single_freq)
+                        not args.no_single_filter, single_freq,
+                        inner_vocab=full_vocab, inner_max_len=args.max_word_len)
     if not pairs:
         sys.exit("未统计到任何搭配，检查语料内容与词表是否匹配")
 

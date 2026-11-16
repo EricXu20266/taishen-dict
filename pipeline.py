@@ -276,6 +276,28 @@ def main():
             py, freq = merged[word]
             merged[word] = (py, int(freq / divisor))
 
+    # ── 4.3 碎片词条降权（curate/fragments.txt）──
+    # 语料跟随度 + 语义复核确认的碎片（2~4 字、几乎总跟在特定字前后、语义不自足），
+    # 频次压到 1：词条保留（翻页仍可取到），只让出候选前排位置。
+    # 清单由 tools/analyze_fragments.py 产出、tools/apply_fragment_downgrade.py 落库，
+    # 这里接入是为了下次全量重建不回滚降权。
+    fragment_path = os.path.join(ROOT, "curate", "fragments.txt")
+    if os.path.exists(fragment_path):
+        frag_words = set()
+        with open(fragment_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    frag_words.add(line)
+        hit = 0
+        for word in frag_words:
+            if word in merged:
+                merged[word] = (merged[word][0], 1)
+                hit += 1
+        print(f"  碎片降权: {hit}/{len(frag_words)} 词（curate/fragments.txt）")
+    else:
+        print("  碎片降权: 无清单，跳过")
+
     # 对数压缩 → 1~MAX_FREQ
     entries_out: list[tuple[str, str, int]] = []
     max_adj = max(f for _, f in merged.values()) if merged else 1
