@@ -35,10 +35,20 @@
 
 质量约束：
 - STOP_WORDS：前词是单字虚词时跳过（「的→X」无预测价值）。
-- 后词是虚词（的/了/是/在…）的对保留但降档到 2-3 档，且不占 --per-prev 配额，
-  避免「X 的」把实词搭配挤出每前词名额。
+- 后词是**虚词**（的/了/是/在…）的对保留但降档到 2-3 档，且不占 --per-prev 配额，
+  避免「X 的」把实词搭配挤出每前词名额。这类对在拆组排序里仍有用（打 we+de 时「的」要排前）。
+- 后词是**单字且非虚词**的对整对剔除：抽样显示碎片集中在「后词单字」形态
+  （马尔马→拉、楚考烈→王、单元→音、不适→当）——专名被词表碎片切断后尾字落成单字。
+  试过「降档到 2 而不删」：碎片仍会在同轮唯一命中时前移，且把档位 2 从 25 万撑到 47 万，
+  档位 2 的切碎率从 10% 升到 50%，比不处理更差。
+- 双单字对（两边都是单字）整对剔除：50 条分层抽样里这类占 11.4%，单独抽 20 条中
+  18 条不可用（市→大、籀→庼、堂→区）；档位 6 里双单字占 28.8%，是最强权重位的碎片源。
+- 前词单字且词频 < SINGLE_PREV_MIN_FREQ(3600) 的对整对剔除：专名首字碎片
+  （芬→王朝、政→收入、票→反对）。实测碎片单字词频 2098-3457、常用单字（他/我/年/月/们）
+  3880-4711，两档之间有空档，取 3600 作分界。
 - NOISE_PAIRS：百科结构化标签对（模板/infobox 残留），整对剔除。
 - --per-prev：每个前词最多保留多少条**实词**搭配（按频次降序），提升前词覆盖率。
+  只有「后词为多字实词」的对占配额，虚词后词不占。
 """
 
 import argparse
@@ -60,6 +70,9 @@ STOP_WORDS = {
 WEAK_NEXT = {
     "的", "了", "是", "在", "和", "地", "得", "着", "过", "等",
     "与", "也", "而", "就", "至", "为", "被", "把", "或", "及",
+    # 2026-11-17 抽检补入：档位 2 的虚词后词占 43%，原名单只有 19 字
+    "不", "有", "之", "皆", "其", "亦", "且", "则", "者", "所",
+    "矣", "焉", "乎", "已", "于", "此", "各", "该", "并",
 }
 
 # 百科结构化标签对（模板/infobox 残留），整对剔除
@@ -72,6 +85,10 @@ NOISE_PAIRS = {
 }
 
 WORD_MIN_LEN, WORD_MAX_LEN = 1, 4
+
+# 前词单字的最低词频：低于此值视为专名首字碎片（芬/帝/蓝/牙/政/票/采/湾）。
+# 实测碎片单字词频 2098-3457，常用单字（他/我/你/年/月/们）3880-4711，中间有空档。
+SINGLE_PREV_MIN_FREQ = 3600
 
 # 档位上界：(次数上界, 档位)，超出最后一档即 6
 TIER_BOUNDS = ((3, 2), (7, 3), (15, 4), (39, 5))
@@ -98,23 +115,26 @@ def has_trad_char(word: str) -> bool:
     return False
 
 
-def load_vocab(dict_db: str) -> set:
-    """从系统词库读取词表（只用词，不用词频）。"""
+def load_vocab(dict_db: str) -> tuple:
+    """从系统词库读取词表，并单独取单字词频（判前词单字是否常用）。"""
     vocab = set()
+    single_freq: dict = {}
     conn = sqlite3.connect(dict_db)
     try:
-        cur = conn.execute("SELECT word FROM system_dict")
-        for (word,) in cur:
+        cur = conn.execute("SELECT word, MAX(frequency) FROM system_dict GROUP BY word")
+        for word, freq in cur:
             if WORD_MIN_LEN <= len(word) <= WORD_MAX_LEN:
                 vocab.add(word)
+                if len(word) == 1:
+                    single_freq[word] = freq
     except sqlite3.Error as exc:
         sys.exit(f"读取词表失败: {exc}")
     finally:
         conn.close()
     if not vocab:
         sys.exit("词表为空，检查 --dict 是否指向 system_dict.db")
-    print(f"词表: {len(vocab)} 词")
-    return vocab
+    print(f"词表: {len(vocab)} 词（单字 {len(single_freq)}）")
+    return vocab, single_freq
 
 
 def iter_corpus(corpus_dir: str):
@@ -205,15 +225,17 @@ def inner_pairs(words: list, vocab: set, max_len: int):
     return out
 
 
-def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, noise_filter: bool) -> Counter:
+def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, noise_filter: bool,
+                single_filter: bool = True, single_freq: dict = None) -> Counter:
     """统计相邻词共现（同一句内相邻 + 长词内部边界）。"""
     pairs: Counter = Counter()
     files = 0
     dropped_trad = 0
     dropped_noise = 0
+    dropped_single = 0
 
     def keep(left: str, right: str) -> bool:
-        nonlocal dropped_trad, dropped_noise
+        nonlocal dropped_trad, dropped_noise, dropped_single
         # 前词是纯虚词时跳过（「的→X」没有预测价值）；
         # 后词不过滤——「我们→的」这类对拆组排序有用。
         if left in STOP_WORDS:
@@ -222,6 +244,22 @@ def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, no
             return False
         if not (WORD_MIN_LEN <= len(right) <= WORD_MAX_LEN):
             return False
+        # 双单字对整对剔除：抽样 20 条中 18 条是长词被切成两个单字（市→大、籀→庼），
+        # 且档位 6 里双单字占 28.8%——留着等于把碎片送进最强权重位。
+        if single_filter and len(left) == 1 and len(right) == 1:
+            dropped_single += 1
+            return False
+        # 后词单字且非虚词：专名尾字碎片（马尔马→拉、单元→音、不适→当）整对剔除。
+        # 虚词单字保留（走 WEAK_NEXT 降档），拆组排序需要它们。
+        if single_filter and len(right) == 1 and right not in WEAK_NEXT:
+            dropped_single += 1
+            return False
+        # 前词单字且词频偏低：专名首字碎片（芬→王朝、帝→大理、政→收入、票→反对）整对剔除。
+        # 高频单字（他/我/你/年/月/们）词频 3880+，不受影响，它们的搭配有预测价值。
+        if single_filter and single_freq is not None and len(left) == 1:
+            if single_freq.get(left, 0) < SINGLE_PREV_MIN_FREQ:
+                dropped_single += 1
+                return False
         if trad_filter and (has_trad_char(left) or has_trad_char(right)):
             dropped_trad += 1
             return False
@@ -242,12 +280,16 @@ def count_pairs(corpus_dir: str, vocab: set, max_len: int, trad_filter: bool, no
                 if keep(left, right):
                     pairs[(left, right)] += 1
     print(f"语料文件: {files}，候选搭配: {len(pairs)}"
-          f"（简繁剔除 {dropped_trad} 次、结构化对剔除 {dropped_noise} 次）")
+          f"（简繁剔除 {dropped_trad} 次、结构化对剔除 {dropped_noise} 次、"
+          f"双单字对剔除 {dropped_single} 次）")
     return pairs
 
 
 def tier_of(count: int, weak_next: bool = False) -> int:
-    """绝对频次 → 档位。虚词后词封顶 3 档（弱证据）。"""
+    """绝对频次 → 档位。虚词后词封顶 3 档（弱证据）。
+
+    后词是单字且非虚词的对已在 count_pairs 阶段剔除，所以这里只需处理虚词。
+    """
     if count <= 1:
         return 1
     if weak_next:
@@ -259,7 +301,11 @@ def tier_of(count: int, weak_next: bool = False) -> int:
 
 
 def select_pairs(pairs: Counter, top: int, per_prev: int) -> list:
-    """按频次降序挑选；每前词最多 per_prev 条实词搭配（虚词后词不占配额）。"""
+    """按频次降序挑选；每前词最多 per_prev 条实词搭配。
+
+    「实词」= 后词是多字且不在 WEAK_NEXT。虚词后词与单字后词都不占配额——
+    否则「X 的」「X → 某单字」会把真正的多字搭配挤出每前词名额。
+    """
     items = sorted(pairs.items(), key=lambda kv: (-kv[1], kv[0]))
     used: Counter = Counter()
     kept = []
@@ -318,6 +364,8 @@ def report_distribution(kept: list):
     total = len(kept) or 1
     print(f"档位分布: {dict(sorted(dist.items()))}")
     print(f"前词数: {len(prevs)}，双单字对占比: {double_single / total:.1%}")
+    high = sum(v for k, v in dist.items() if k >= 5)
+    print(f"高档位(5-6)占比: {high / total:.1%}")
 
 
 def main():
@@ -334,14 +382,17 @@ def main():
                         help="关闭简繁过滤（默认开启：剔除含繁体独有字的词对）")
     parser.add_argument("--no-noise-filter", action="store_true",
                         help="关闭结构化标签对过滤（默认开启）")
+    parser.add_argument("--no-single-filter", action="store_true",
+                        help="关闭双单字对剔除（默认开启：两边都是单字的对整对丢弃）")
     args = parser.parse_args()
 
     if not os.path.isdir(args.corpus):
         sys.exit(f"语料目录不存在: {args.corpus}")
 
-    vocab = load_vocab(args.dict)
+    vocab, single_freq = load_vocab(args.dict)
     pairs = count_pairs(args.corpus, vocab, args.max_word_len,
-                        not args.no_trad_filter, not args.no_noise_filter)
+                        not args.no_trad_filter, not args.no_noise_filter,
+                        not args.no_single_filter, single_freq)
     if not pairs:
         sys.exit("未统计到任何搭配，检查语料内容与词表是否匹配")
 
