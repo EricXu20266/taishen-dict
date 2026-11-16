@@ -5,6 +5,7 @@ system_dict.db.bin
 domains.db
 common.db
 bigram.db
+bigram.db.bak-*
 output/domains/*.txt
 VERSION.json
 *.tmp

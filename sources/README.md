@@ -39,40 +39,39 @@ aria2c -c -x4 -s4 -m10 --file-allocation=none `
 
 脚本：`tools/collect/wiki_corpus.py`（流式 bz2 解压，按 `<page>` 边界切分，内存恒定）
 
+提取与统计的完整命令：
+
 ```powershell
+# 提取（约 200 秒）
 python tools/collect/wiki_corpus.py `
   --xml tmp/dumps/zhwiki-latest-pages-articles.xml.bz2 `
-  --out-dir tmp/corpus_50k --limit 50000 --shard-mb 64
+  --out-dir tmp/corpus_50k_full --limit 50000 --shard-mb 64 --min-han 200
+
+# 统计（约 4 分钟）
+python tools/build_context_prior.py `
+  --corpus tmp/corpus_50k_full --dict output/system_dict.db --out output/bigram.db `
+  --top 700000 --min-count 2 --per-prev 10
 ```
 
 清洗只删结构性标记，不改写文字：模板/表格嵌套剥离、`ref`/`gallery` 标签删除、文件与分类链接删除、
 `[[A|B]]`→B、外链取描述文字、粗体斜体标记去掉，最终**只保留汉字与换行**。
 正文汉字数 < 200 的页面丢弃（`--min-han` 默认值）。
 
-当前产物 `tmp/corpus_50k/`：
+当前基线语料 `tmp/corpus_50k_full/`（2026-11-17 补齐到 5 万页）：
 
-| 分片 | 体积 | 行数 |
+| 分片 | 体积 | 说明 |
 |---|---|---|
-| `corpus_000.txt` | 64.0 MB | 3,135,001 |
-| `corpus_001.txt` | 64.0 MB | 3,074,127 |
-| `corpus_002.txt` | 40.0 MB | 1,923,774 |
-| 合计 | 168.1 MB | 8,132,902 |
+| `corpus_000.txt` | 64.0 MB | |
+| `corpus_001.txt` | 64.0 MB | |
+| `corpus_002.txt` | 64.0 MB | |
+| `corpus_003.txt` | 9.1 MB | 5 万页限额在此处停止 |
+| 合计 | 201.1 MB | 保留 24,046 页，产出 385,983 对 |
 
-### 与「完整 5 万页」的差异
-
-2026-11-17 用同一脚本、同一 dump、同一组默认参数（`--limit 50000 --shard-mb 64 --min-han 200`）
-完整重跑，实测结果：
-
-```
-页数 50000 / 保留 24046 / 分片 4 / 合计 201.1 MB
-```
-
-对照当前产物 168.1 MB / 3 片，**是完整 5 万页量的 83.6%**，且第三片（40 MB）未写满、
-没有第四片。据此判断：当日提取在达到 5 万页限额**之前**就结束了（中断或被停），
-实际只处理了约 4.2 万页。当日连跑日志未留存，无法确认是 Ctrl+C、超时还是其它原因。
-
-结论：**当前语料是「dump 前约 4.2 万页」，不是完整 5 万页。**
-若需要完整 5 万页（预计 +33 MB 语料、搭配对增加几个百分点），按上面的命令重跑一次即可。
+历史目录 `tmp/corpus_50k/`（168.1 MB / 3 片）是 2026-10-29 那次提取的产物，
+当时在约 4.2 万页处被中断（第三片只写到 40 MB）。已用前缀校验确认：
+它的前两片与现基线逐字节相同，第三片是现 `corpus_002.txt` 的前缀——
+即**补充是纯追加，不会改变已有搭配对**。
+旧目录可作历史备份，不再作为构建输入。
 
 ---
 
@@ -82,26 +81,32 @@ python tools/collect/wiki_corpus.py `
 
 ```powershell
 python tools/build_context_prior.py `
-  --corpus tmp/corpus_50k `
+  --corpus tmp/corpus_50k_full `
   --dict output/system_dict.db `
   --out output/bigram.db `
-  --top 700000 --min-count 2 --per-prev 8
+  --top 700000 --min-count 2 --per-prev 10
 ```
 
-2026-11-17 01:40 那次重建的实际输出（见 `tmp/build_bigram7.log`）：
+2026-11-17 02:12 那次重建的实际输出（见 `tmp/build_perprev10.log`）：
 
 ```
 词表: 355568 词（单字 7032）
-语料文件: 3，候选搭配: 3105964（简繁剔除 2761 次、结构化对剔除 60638 次、双单字对剔除 19468577 次）
-已写出 output/bigram.db（323152 对，19.6 MB）
-频次区间: 2 ~ 8797
-档位分布: {2: 210886, 3: 73508, 4: 19326, 5: 12109, 6: 7323}
-前词数: 72764，双单字对占比: 0.0%
-高档位(5-6)占比: 6.0%
+语料文件: 4，候选搭配: 3556696（简繁剔除 3292 次、结构化对剔除 63617 次、双单字对剔除 23532851 次）
+已写出 output/bigram.db（385983 对，23.4 MB）
+频次区间: 2 ~ 10133
+档位分布: {2: 248993, 3: 88534, 4: 24039, 5: 15185, 6: 9232}
+前词数: 79306，双单字对占比: 0.0%
+高档位(5-6)占比: 6.3%
 ```
 
-> 清洗前的基线是 436,545 对 / 25.2 MB / 前词 95,333 / 双单字 11.4%。
-> 清洗规则与复测结果见 `docs/bigram-acceptance-2026-11-17.md` 第 8 节。
+> 演进：清洗前 436,545 对（4.2 万页）→ 清洗后 323,152 对 → 补齐 5 万页且
+> `--per-prev` 提到 10 后 385,983 对。规则与复测见 `docs/bigram-acceptance-2026-11-17.md`
+> 第 8 节与 `docs/bigram-acceptance-2026-11-17-2.md`。
+
+**关于 `--per-prev`**：它是「每个前词最多保留多少条多字实词搭配」。语料越大，
+同一前词的后继越多，配额越紧就越多长尾有效搭配被挤掉——2026-11-17 实测
+`--per-prev 8` 会把「托勒密→十二」挤出（被「九世」挤占），导致验证集少 1 例。
+语料继续增长时应同步上调（5 万页配 10 是经验值，10 万页建议 16-20）。
 
 （词表 355568 是脚本内 `1 ≤ len ≤ 4` 过滤后的规模；`system_dict.db` 全表 372733 条。）
 
@@ -126,7 +131,7 @@ python tools/build_context_prior.py `
 | 前词单字词频 < 3600 剔除 | 专名首字碎片（`芬→王朝`、`政→收入`）；`他/我/年/月/们`（3880+）不受影响 |
 | `NOISE_PAIRS`（22 组） | 百科结构化标签对（`年→出生`、`总人口→为`）整对剔除 |
 | 简繁过滤（默认开） | 含繁体独有字的词对剔除——简体模式下命中不到，统计了也没用 |
-| `--per-prev 8` | 每个前词最多 8 条**实词**搭配，提升前词覆盖率 |
+| `--per-prev 10` | 每个前词最多 10 条**实词**搭配；太小会挤掉长尾有效搭配（见第 3 节） |
 
 三条单字规则可用 `--no-single-filter` 整体关闭（对比实验用）。
 
@@ -152,7 +157,7 @@ python tools/build_context_prior.py `
 
 **为什么改绝对频次映射**：早期用分位切分（按排名百分比分档），40 万行里 98.6% 被压成 1 档，
 消费侧当作无证据丢弃——数据库 40 万行、实际可用仅 5,453 对。改成绝对频次映射后，
-档位 2 起全部可用（当时 436,545 对，可用对提升 80 倍；2026-11-17 清洗后为 323,152 对）。
+档位 2 起全部可用（当时 436,545 对，可用对提升 80 倍；2026-11-17 清洗并补齐语料后为 385,983 对）。
 
 消费侧代码：`taishenIME/engine/src/lib.rs` → `apply_context_boost`（排序键 = 档位降序 + 原位置）。
 
@@ -164,32 +169,35 @@ python tools/build_context_prior.py `
 # 0) 前提：dump 已下载到 tmp/dumps/，且 output/system_dict.db 存在
 #    （词表是分词的唯一依据，词库更新后应重建搭配表）
 
-# 1) 提取语料（约 6 分钟：解压 3.2 GB bz2 + 清洗 5 万页）
+# 1) 提取语料（约 200 秒：解压 3.2 GB bz2 + 清洗 5 万页）
 python tools/collect/wiki_corpus.py --xml tmp/dumps/zhwiki-latest-pages-articles.xml.bz2 `
-  --out-dir tmp/corpus_50k --limit 50000 --shard-mb 64
+  --out-dir tmp/corpus_50k_full --limit 50000 --shard-mb 64 --min-han 200
 
-# 2) 统计并写出 bigram.db（约 6 分钟）
-python tools/build_context_prior.py --corpus tmp/corpus_50k --dict output/system_dict.db `
-  --out output/bigram.db --top 700000 --min-count 2 --per-prev 8
+# 2) 统计并写出 bigram.db（约 4 分钟）
+python tools/build_context_prior.py --corpus tmp/corpus_50k_full --dict output/system_dict.db `
+  --out output/bigram.db --top 700000 --min-count 2 --per-prev 10
 
 # 3) 登记版本（写 output/VERSION.json 的 dicts["bigram.db"]）
-python pipeline.py
+python tools/update_version.py --dicts bigram.db
 
 # 4) 校验
 python tools/verify_build.py
 
 # 5) 单向同步到 IME
 python tools/sync_to_ime.py
+
+# 6) 部署到安装目录（IME 实际读的是这里）
+Copy-Item <taishenIME>\resources\bigram.db "$env:LOCALAPPDATA\TaishenIME\bigram.db" -Force
 ```
 
 等价的一键入口：`python tools/build_bigram.py`。
 
 ### 两个必须知道的坑
 
-1. **`--corpus` 必须显式指定 `tmp/corpus_50k`**。`build_bigram.py` 的默认语料目录是
-   `tmp/corpus`（不含 `_50k`），当前不存在；漏传会直接报「语料目录为空」。
-   历史产物在 `tmp/corpus_50k`，`--reuse-corpus` 时要一起带上：
-   `python tools/build_bigram.py --reuse-corpus --corpus tmp/corpus_50k`
+1. **`--corpus` 必须显式指定 `tmp/corpus_50k_full`**。`build_bigram.py` 的默认语料目录是
+   `tmp/corpus`（不含后缀），当前不存在；漏传会直接报「语料目录为空」。
+   现基线在 `tmp/corpus_50k_full`，`--reuse-corpus` 时要一起带上：
+   `python tools/build_bigram.py --reuse-corpus --corpus tmp/corpus_50k_full`
 2. **`--reuse-corpus` 不会清理旧分片**（只在提取分支里删 `corpus_*.txt`）。
    换 `--limit` 重跑时必须先手工清空目标目录，否则新旧分片会一起被统计。
 
@@ -197,16 +205,17 @@ python tools/sync_to_ime.py
 
 ## 6. 已知质量局限
 
-2026-11-17 做了两轮抽样：清洗前 50 条（异常率 36%）、清洗后 50 条（异常率 6%）。
-清洗规则见第 3 节质量约束表，详细对比见验收报告第 8 节。
+2026-11-17 做了三轮抽样：清洗前 50 条（异常率 36%）、清洗后 50 条（异常率 6%）、
+补齐 5 万页后 50 条（异常率 4%）。清洗规则见第 3 节质量约束表，
+详细对比见 `docs/bigram-acceptance-2026-11-17.md` 第 8 节与 `-2.md` 第 3 节。
 
 清洗后的结构：
 
 | 类别 | 占比 | 说明 |
 |---|---|---|
 | 全多字 | 100% | 双单字与单字后词已剔除，表内只剩多字对（前词可含单字高频字） |
-| 档位 2 | 65% | 以虚词后词为主（`X 的`、`X 是`），拆组排序有用、主排序权重最低 |
-| 高档位（5-6） | 6.0% | 抽检 10/10 与 7/10 为有效搭配 |
+| 档位 2 | 64.5% | 以虚词后词为主（`X 的`、`X 是`），拆组排序有用、主排序权重最低 |
+| 高档位（5-6） | 6.3% | 补齐后抽检 10/10 与 10/10 为有效搭配 |
 
 **根因未解决，只是被过滤掉**：碎片来自词库本身把专名切成独立词条
 （`马尔马`、`大维`、`楚考烈`、`临川`、`中发` 都在 `system_dict` 里，词频 700-1700），
@@ -215,8 +224,9 @@ python tools/sync_to_ime.py
 
 彻底解决要在词库侧清理碎片词条或提高词表覆盖，那属于 `curate/` 的职责，不是本表能做的。
 
-清洗后残留的 3 条碎片样本（50 条抽样中）：`克拉斯→车站`、`董事→兼行`、`卡利→古拉`
-——都是**多字碎片**前词，靠单字规则拦不住；继续加规则会伤及正常词，移交给词库侧。
+清洗后残留的多字碎片样本（50 条抽样中）：第 2 轮是 `克拉斯→车站`、`董事→兼行`、`卡利→古拉`，
+补齐 5 万页后是 `禁卫→坦克`、`北安→大略` ——都是**多字碎片**前词，靠单字规则拦不住；
+继续加规则会伤及正常词，移交给词库侧。
 
 ---
 
@@ -224,8 +234,9 @@ python tools/sync_to_ime.py
 
 - 语料可得：dump 在 `tmp/dumps/`（3.20 GB），提取脚本与参数齐全 → **可按本文档重建**
 - 但 dump 是 `latest` 滚动快照，重新下载会得到**不同内容**，无法做到字节级复现
-- 精确复现当前 `bigram.db` 的唯一前提是**保住 `tmp/corpus_50k/` 这三个分片**（168.1 MB）
-  或用当前 dump 原样重跑
+- 精确复现当前 `bigram.db`（385,983 对）的唯一前提是**保住 `tmp/corpus_50k_full/`
+  的四个分片**（201.1 MB），或用当前 dump 原样重跑
 
-因此：`tmp/corpus_50k` 应视作**基线语料**保留，不要清空。
-若确认要长期基线化，建议把三个分片打包后放入可访问的归档位置（换机器/换盘不丢）。
+因此：`tmp/corpus_50k_full` 应视作**基线语料**保留，不要清空。
+建议把四个分片打包后放入可访问的归档位置（换机器/换盘不丢）；
+`tmp/corpus_50k`（168.1 MB，4.2 万页版本）可作历史备份，不再作构建输入。
