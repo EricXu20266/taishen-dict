@@ -265,6 +265,33 @@ def main():
     merged = {w: (py, f) for w, py, f in simp_list}
     print(f"  简体: {len(simp_list):,}, 繁体(原文保留): {len(trad_list):,}, 乱码过滤: {len(merged_list) - len(simp_list) - len(trad_list):,}")
 
+    # ── 4.15 长词补充（curate/longwords.txt）──
+    # 碎片还原出来的长词（马尔马拉海/公车上书这类），补进来让正向最大匹配优先切长词，
+    # 碎片也就不再被当入口。频次在清单里按语料频次分档（500-1000），低于同类专名的
+    # 常见档位（1500-3000），避免长词抢短词的首位。
+    longword_path = os.path.join(ROOT, "curate", "longwords.txt")
+    if os.path.exists(longword_path):
+        lw_added = 0
+        with open(longword_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 3:
+                    continue
+                word, pinyin = parts[0], parts[1]
+                try:
+                    freq = int(parts[2])
+                except ValueError:
+                    continue
+                if word not in merged:
+                    merged[word] = (pinyin, freq)
+                    lw_added += 1
+        print(f"  长词补充: {lw_added} 词（curate/longwords.txt）")
+    else:
+        print("  长词补充: 无清单，跳过")
+
     # 应用 boost/demote
     max_raw = max(f for _, f in merged.values()) if merged else 1
     for word, multiplier in boost.items():
