@@ -182,6 +182,48 @@ def _check_common_db() -> bool:
         conn.close()
 
 
+def _check_bigram_db() -> bool:
+    """bigram.db（context_prior）校验：产物自洽性。
+
+    可选资源——文件不存在时只 WARN 不 FAIL（引擎按无表降级，不阻塞输入）。
+    存在时必须满足：
+      1. 有 context_prior 表且非空
+      2. 无档位 1 的行（统计侧 --min-count 2 已排除；档位 1 在消费侧等于无证据，
+         留在库里既占体积又让「有效对」的数字失真）
+      3. 双单字对为 0（2026-11-17 清洗口径：两侧都是单字的对几乎全是分词碎片）
+    """
+    db_path = os.path.join(ROOT, "output", "bigram.db")
+    if not os.path.exists(db_path):
+        print(f"  [WARN] 可选产物缺失: {db_path}（引擎会按无表降级）")
+        return True
+    conn = sqlite3.connect(db_path)
+    try:
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "context_prior" not in have:
+            print(f"  [FAIL] bigram.db: 缺表 context_prior")
+            return False
+        total = conn.execute("SELECT COUNT(*) FROM context_prior").fetchone()[0]
+        if total == 0:
+            print("  [FAIL] bigram.db::context_prior: 空表")
+            return False
+        tier1 = conn.execute("SELECT COUNT(*) FROM context_prior WHERE count < 2").fetchone()[0]
+        if tier1:
+            print(f"  [FAIL] bigram.db: 存在档位 <2 的行 {tier1} 条（统计侧应已按 min-count 2 排除）")
+            return False
+        dbl = conn.execute(
+            "SELECT COUNT(*) FROM context_prior "
+            "WHERE length(prev)=1 AND length(next)=1"
+        ).fetchone()[0]
+        if dbl:
+            print(f"  [FAIL] bigram.db: 存在双单字对 {dbl} 条（清洗口径要求为 0）")
+            return False
+        dist = dict(conn.execute("SELECT count, COUNT(*) FROM context_prior GROUP BY count").fetchall())
+        print(f"  [OK]   bigram.db::context_prior: {total} 对, 档位分布 {dict(sorted(dist.items()))}")
+        return True
+    finally:
+        conn.close()
+
+
 def main() -> bool:
     print("══ 词库校验 ══")
     ok = True
@@ -190,6 +232,7 @@ def main() -> bool:
     ok &= _check_db(os.path.join(ROOT, "output", "domains", "domains.db"),
                     ["domain_words", "domain_words_trad"])
     ok &= _check_common_db()
+    ok &= _check_bigram_db()
     print("══ " + ("校验通过" if ok else "校验失败") + " ══")
     return ok
 
