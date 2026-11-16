@@ -11,6 +11,7 @@
     python tools/build_bigram.py                # 默认 5 万页，产出 output/bigram.db
     python tools/build_bigram.py --limit 20000  # 小规模试跑
     python tools/build_bigram.py --reuse-corpus # 语料已在 tmp/corpus，跳过提取
+    python tools/build_bigram.py --reuse-corpus --corpus tmp/corpus_50k  # 指定已有语料目录
 
 产物登记进 output/VERSION.json 的 dicts（pipeline.py write_version 已包含 bigram.db），
 随后 tools/sync_to_ime.py 会把它同步到 taishenIME/resources/。
@@ -34,7 +35,7 @@ OUT_DB = os.path.join(ROOT, "output", "bigram.db")
 
 
 def run(cmd):
-    print("»", " ".join(cmd), flush=True)
+    print(">>", " ".join(cmd), flush=True)
     ret = subprocess.call(cmd)
     if ret != 0:
         sys.exit(f"失败（exit={ret}）：{cmd[1]}")
@@ -44,35 +45,40 @@ def main():
     ap = argparse.ArgumentParser(description="构建 bigram 搭配表")
     ap.add_argument("--dump", default=DUMP_GLOB, help="wiki dump 路径")
     ap.add_argument("--limit", type=int, default=50000, help="提取页数（0=全量，很慢）")
-    ap.add_argument("--reuse-corpus", action="store_true", help="复用 tmp/corpus，跳过提取")
-    ap.add_argument("--top", type=int, default=400000, help="保留搭配对数上限")
+    ap.add_argument("--reuse-corpus", action="store_true", help="复用已有语料，跳过提取")
+    ap.add_argument("--corpus", default=CORPUS_DIR, help="语料目录（默认 tmp/corpus）")
+    ap.add_argument("--top", type=int, default=700000, help="保留搭配对数上限")
     ap.add_argument("--min-count", type=int, default=2, help="最小共现次数")
+    ap.add_argument("--per-prev", type=int, default=8,
+                    help="每个前词最多保留的实词搭配数（0=不限）")
     args = ap.parse_args()
 
     py = sys.executable
+    corpus_dir = os.path.abspath(args.corpus)
     if not args.reuse_corpus:
         if not os.path.exists(args.dump):
             sys.exit(f"dump 不存在: {args.dump}\n先按 README 下载 zhwiki dump 到 tmp/dumps/")
-        os.makedirs(CORPUS_DIR, exist_ok=True)
-        for f in glob.glob(os.path.join(CORPUS_DIR, "corpus_*.txt")):
+        os.makedirs(corpus_dir, exist_ok=True)
+        for f in glob.glob(os.path.join(corpus_dir, "corpus_*.txt")):
             os.remove(f)
-        cmd = [py, CORPUS_SCRIPT, "--xml", args.dump, "--out-dir", CORPUS_DIR]
+        cmd = [py, CORPUS_SCRIPT, "--xml", args.dump, "--out-dir", corpus_dir]
         if args.limit:
             cmd += ["--limit", str(args.limit)]
         run(cmd)
 
-    if not os.path.isdir(CORPUS_DIR) or not glob.glob(os.path.join(CORPUS_DIR, "*.txt")):
-        sys.exit(f"语料目录为空: {CORPUS_DIR}")
+    if not os.path.isdir(corpus_dir) or not glob.glob(os.path.join(corpus_dir, "*.txt")):
+        sys.exit(f"语料目录为空: {corpus_dir}")
     if not os.path.exists(DICT_DB):
         sys.exit(f"缺 system_dict.db，先跑 python pipeline.py")
 
     run([
         py, STAT_SCRIPT,
-        "--corpus", CORPUS_DIR,
+        "--corpus", corpus_dir,
         "--dict", DICT_DB,
         "--out", OUT_DB,
         "--top", str(args.top),
         "--min-count", str(args.min_count),
+        "--per-prev", str(args.per_prev),
     ])
     print(f"\n完成：{OUT_DB}")
     print("下一步：python pipeline.py（重新生成 VERSION.json 登记 bigram.db）")
