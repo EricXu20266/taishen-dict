@@ -34,6 +34,7 @@ from zhconv import convert
 
 from sources import jieba, wiki
 from output import sqlite, domains as out_domains, domains_db
+from tools.versioning import next_version
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(ROOT, "output")
@@ -94,24 +95,6 @@ def _git_commit() -> str:
         ).stdout.strip() or "unknown"
     except Exception:
         return "unknown"
-
-
-def next_version() -> str:
-    """版本号：V{YYYY}.{MM}.{DD}.{n}（同日递增序号）。"""
-    from datetime import datetime
-
-    today = datetime.now().strftime("%Y.%m.%d")
-    old = os.path.join(OUT_DIR, "VERSION.json")
-    n = 0
-    if os.path.exists(old):
-        try:
-            with open(old, encoding="utf-8") as f:
-                prev = json.load(f).get("version", "")
-            if prev.startswith(today + "."):
-                n = int(prev.rsplit(".", 1)[-1])
-        except Exception:
-            n = 0
-    return f"{today}.{n + 1}"
 
 
 def write_version() -> str:

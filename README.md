@@ -77,8 +77,10 @@ python tools/sync_to_ime.py
 
 ## 词库版本控制
 
-- **版本号**：`V{YYYY}.{MM}.{DD}.{n}`（同日构建自动递增序号），pipeline 校验通过后生成
-- **VERSION.json**：每次构建记录版本号、git commit、三个 db 的 sha256 与表条数
+- **版本号**：`{YYYY}.{MM}.{DD}.{n}`（同日构建自动递增序号），pipeline 校验通过后生成
+- **两仓共用版本号空间**：`tools/versioning.py` 的 `next_version()` 同时读本仓库 `output/VERSION.json` 与 IME 侧 `resources/VERSION.json`，取当日最大序号 + 1。局部重建（只重建 common.db）不会生成比 IME 更小的号，避免 `sync_to_ime.py` 把 IME 版本指针拉回去
+- **VERSION.json**：每次构建记录版本号、构建时间、git commit、三个 db 的 sha256 与表条数
+- **局部重建**：只重建 common.db 时执行 `python tools/update_version.py` 刷新清单（幂等：内容没变不 bump 版本号）
 - **同步即对账**：`sync_to_ime.py` 同步前校验产物哈希 == 清单（防产物被改/清单过期），同步后校验 IME 侧哈希 == 清单（防复制不完整）
 - **IME 侧记录**：`taishenIME/resources/VERSION.json` 存当前词库版本，随同步更新
 
