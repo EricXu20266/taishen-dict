@@ -620,6 +620,7 @@
 鱽鱼	daoyu	800
 搋子	chuaizi	800
 剞劂	jijue	800
+# 公众人物名（非语料挖掘的普通人名，不走隐私闸门的「具体人名」限制）
 马云	mayun	800
 安全水平	anquanshuiping	700
 先进制造业	xianjinzhizaoye	700
