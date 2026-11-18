@@ -222,15 +222,42 @@ def main():
     domain_entries: dict[str, list[tuple[str, str]]] = {}
     all_wiki: dict[str, str] = {}  # word → pinyin（Wiki 拼音）
 
-    for name, cfg in domains_cfg.items():
-        cats = cfg.get("wiki_categories", [])
-        depth = cfg.get("max_depth", 2)
-        entries = wiki.collect_domain(name, cats, max_depth=depth)
-        entry_list: list[tuple[str, str]] = []
-        for w, py, d in entries:
-            entry_list.append((w, py))
-            all_wiki[w] = py
-        domain_entries[name] = entry_list
+    reuse_wiki = "--reuse-wiki" in sys.argv
+    if reuse_wiki:
+        # 复用上次构建的 output/domains/*.txt（格式：词 拼音），跳过网络采集。
+        # 用途：只改了 curate/ 层、不需要重新采集 wiki 时的快速重建。
+        print("  [复用] 读 output/domains/*.txt，跳过 wiki 网络采集")
+        dom_dir = os.path.join(OUT_DIR, "domains")
+        wiki_names = set(domains_cfg.keys())  # 只取 domains.yaml 定义的 21 个 wiki 域
+        for fn in sorted(os.listdir(dom_dir)):
+            if not fn.endswith(".txt"):
+                continue
+            name = fn[:-4]
+            if name not in wiki_names:
+                continue  # thuocl_* / curate 补充域不进 system_dict，避免专名污染常用候选
+            entry_list = []
+            with open(os.path.join(dom_dir, fn), encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split()
+                    if len(parts) < 2:
+                        continue
+                    w, py = parts[0], parts[1]
+                    entry_list.append((w, py))
+                    all_wiki.setdefault(w, py)
+            domain_entries[fn[:-4]] = entry_list
+    else:
+        for name, cfg in domains_cfg.items():
+            cats = cfg.get("wiki_categories", [])
+            depth = cfg.get("max_depth", 2)
+            entries = wiki.collect_domain(name, cats, max_depth=depth)
+            entry_list: list[tuple[str, str]] = []
+            for w, py, d in entries:
+                entry_list.append((w, py))
+                all_wiki[w] = py
+            domain_entries[name] = entry_list
 
     total_wiki = sum(len(v) for v in domain_entries.values())
     print(f"\n  Wikipedia 总计: {total_wiki:,} 条（{len(domain_entries)} 领域）")
@@ -325,12 +352,81 @@ def main():
     else:
         print("  碎片降权: 无清单，跳过")
 
+    # ── 4.16 校正批次：补单字/补词（curate/extra_words.txt）──
+    # 2026-11-18 全量校正产出。格式：词\t拼音\t频次。同 longwords 机制，已存在则跳过。
+    extra_path = os.path.join(ROOT, "curate", "extra_words.txt")
+    if os.path.exists(extra_path):
+        ew_added = 0
+        with open(extra_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 3:
+                    continue
+                word, pinyin = parts[0], parts[1]
+                try:
+                    freq = int(parts[2])
+                except ValueError:
+                    continue
+                if word not in merged:
+                    merged[word] = (pinyin, freq)
+                    ew_added += 1
+        print(f"  校正补词: {ew_added} 词（curate/extra_words.txt）")
+
+    # ── 4.17 校正批次：拼音修正（curate/pinyin_fix.txt）──
+    # 格式：词\t正确拼音。覆盖 jieba/pypinyin 注错的拼音（如 长江大桥 zhangjiang→changjiang）。
+    pfix_path = os.path.join(ROOT, "curate", "pinyin_fix.txt")
+    if os.path.exists(pfix_path):
+        pf_fixed = 0
+        with open(pfix_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 2:
+                    continue
+                word, pinyin = parts[0], parts[1]
+                if word in merged and merged[word][0] != pinyin:
+                    merged[word] = (pinyin, merged[word][1])
+                    pf_fixed += 1
+        print(f"  拼音修正: {pf_fixed} 词（curate/pinyin_fix.txt）")
+
     # 对数压缩 → 1~MAX_FREQ
     entries_out: list[tuple[str, str, int]] = []
     max_adj = max(f for _, f in merged.values()) if merged else 1
     for word, (pinyin, freq) in merged.items():
         compressed = compress_freq(freq, max_adj)
         entries_out.append((word, pinyin, compressed))
+
+    # ── 4.18 校正批次：单字补读音（curate/extra_readings.txt）──
+    # 格式：字\t拼音\t频次（频次已是最终值，不再压缩）。同一字可有多个拼音，
+    # 追加为独立行——merged 是 word→单拼音的字典，这里绕开它，避免改动主结构。
+    radd_path = os.path.join(ROOT, "curate", "extra_readings.txt")
+    if os.path.exists(radd_path):
+        existing_pairs = {(w, py) for w, py, _ in entries_out}
+        ra_added = 0
+        with open(radd_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 3:
+                    continue
+                word, pinyin = parts[0], parts[1]
+                try:
+                    freq = int(parts[2])
+                except ValueError:
+                    continue
+                if (word, pinyin) in existing_pairs:
+                    continue
+                entries_out.append((word, pinyin, max(1, min(MAX_FREQ, freq))))
+                existing_pairs.add((word, pinyin))
+                ra_added += 1
+        print(f"  补读音: {ra_added} 条（curate/extra_readings.txt）")
 
     # 按频次降序
     entries_out.sort(key=lambda x: x[2], reverse=True)
