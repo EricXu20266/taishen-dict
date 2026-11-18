@@ -22,6 +22,35 @@
 
 改词条的唯一起点在这里。IME 侧改动必须回灌到 `curate/`，否则下次同步会被覆盖。
 
+## curate/ 入口清单
+
+| 文件 | 格式 | 作用 | pipeline 阶段 |
+|---|---|---|---|
+| `common_dict.txt` | `拼音<TAB>词`，行序=优先级 | 候选排序第一层 | 独立加载 |
+| `boost.yaml` / `demote.yaml` | `词: 倍数/除数` | 频次调校 | 4.x |
+| `fragments.txt` | 每行一词 | 碎片词频次压到 1 | 4.3 |
+| `longwords.txt` | `词<TAB>拼音<TAB>频次` | 补长词 | 4.15 |
+| `extra_words.txt` | `词<TAB>拼音<TAB>频次` | 补单字 / 补词条（已存在则跳过） | 4.16 |
+| `pinyin_fix.txt` | `词<TAB>正确拼音` | 覆盖注错的拼音 | 4.17 |
+| `extra_readings.txt` | `字<TAB>拼音<TAB>频次` | 单字补读音，输出阶段追加独立行 | 4.18 |
+| `domains/` | `词 拼音` | 领域词源 | 5.4 |
+
+**为什么补读音要单独一个入口**：主流程的 `merged` 是 `word → 单拼音` 的字典，一个词只挂一个读音。多音字（长 chang/zhang、似 shi/si）在这种结构下装不下，所以补读音绕开它，在输出阶段追加独立行；修拼音则在 `merged` 里直接覆盖。
+
+**重建开关**：
+
+- `python pipeline.py` — 全量（重新采集 wiki，数小时）
+- `python pipeline.py --reuse-wiki` — 复用 `output/domains/*.txt` 跳过网络采集（约 30 秒），**只改 curate 层时用这个**
+- 复用模式只取 `domains.yaml` 定义的 wiki 领域；THUOCL 等其他域不并入 system_dict，否则专名会污染常用候选
+
+**同步后下游必须重建 bin 索引**，否则引擎加载旧索引、修正不生效：
+
+```
+build_index.exe resources\system_dict.db resources\system_dict.db.bin
+```
+
+**拼音格式**：条目拼音按音节分隔（`zhong'guo`），单音节词不带分隔符。手写 curate 源时统一用分隔格式——查询侧会做归一化，但索引键按原串建，混用两种格式会让同一词出现两个索引键。
+
 ## 校验链路（发布前必过）
 
 1. 词库侧 `tools/verify_build.py`：双表存在、简繁不混、common rank 连续、bigram 自洽

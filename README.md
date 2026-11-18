@@ -20,6 +20,11 @@ taishen-dict/
 │   ├── boost.yaml           # 打字高频词加成表（Eric 手动维护）
 │   ├── demote.yaml          # 新闻虚高词降权表
 │   ├── common_dict.txt      # 常用词优先级表（pinyin<TAB>word，行序=优先级，P2 层）
+│   ├── fragments.txt        # 碎片词降权清单（频次压到 1，词条保留）
+│   ├── longwords.txt        # 长词补充（词<TAB>拼音<TAB>频次）
+│   ├── extra_words.txt      # 补单字 / 补词条（词<TAB>拼音<TAB>频次，已存在则跳过）
+│   ├── pinyin_fix.txt       # 拼音修正（词<TAB>正确拼音，覆盖注错）
+│   ├── extra_readings.txt   # 单字补读音（字<TAB>拼音<TAB>频次，输出阶段追加独立行）
 │   └── domains/             # 领域源 txt（18 个，不可重建）：thuocl_* 11 + conversation/forum_slang/modern/network_slang 4 + computer_extra/sci_extra/proper_noun 3
 ├── sources/
 │   ├── jieba.py             # jieba 词典采集（MIT）
