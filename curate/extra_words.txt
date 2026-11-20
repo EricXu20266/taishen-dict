@@ -782,3 +782,15 @@
 王伟	wang'wei	1600
 刘洋	liu'yang	1600
 张三	zhang'san	1800
+
+# ── 2026-11-20 口语高频代词短语（防邻键纠错抢占首词）──
+当我	dang'wo	1800
+当你	dang'ni	1600
+我是	wo'shi	2200
+是我	shi'wo	1800
+在我	zai'wo	1800
+对我	dui'wo	1600
+跟我	gen'wo	1600
+等我	deng'wo	1600
+看我	kan'wo	1600
+你在	ni'zai	1800
