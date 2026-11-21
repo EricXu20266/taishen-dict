@@ -51,6 +51,8 @@ build_index.exe resources\system_dict.db resources\system_dict.db.bin
 
 **拼音格式**：条目拼音按音节分隔（`zhong'guo`），单音节词不带分隔符。手写 curate 源时统一用分隔格式——查询侧会做归一化，但索引键按原串建，混用两种格式会让同一词出现两个索引键。
 
+**文件格式约定**：`curate/` 下源文件统一 **UTF-8 + LF** 行尾。历史遗留不统一（`pinyin_fix.txt` / `extra_readings.txt` 为 CRLF，`extra_words.txt` / `common_dict.txt` / `boost.yaml` 为 LF），改动这些文件时顺手统一，避免混合行尾导致「只加一行却整文件 diff」。
+
 ## 校验链路（发布前必过）
 
 1. 词库侧 `tools/verify_build.py`：双表存在、简繁不混、common rank 连续、bigram 自洽
