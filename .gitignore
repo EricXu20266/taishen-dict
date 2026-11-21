@@ -6,7 +6,7 @@ domains.db
 common.db
 bigram.db
 bigram.db.bak-*
-# 外部来源搭配增量（本机生成的中间产物，不入库）
+# 搭配表增量（本机生成的中间产物）
 output/context_prior_ext.db
 output/bigram_merged.db
 output/domains/*.txt
@@ -21,13 +21,13 @@ __pycache__/
 # 临时下载
 tmp/
 
-# 审核中间产物（批次 staging，合并进 curate 后即失效；保留本地作追溯，不入库）
+# 批次中间产物
 curate/staging/
 
 # 运行时会话目录
 sessions/
 
-# 本机语料挖掘工具（含内部库路径，不入库）
+# 本机工具
 tools/mine_input_strings.py
 
 # 项目宪法（仅本地，不入库）
