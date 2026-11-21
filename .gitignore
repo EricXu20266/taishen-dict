@@ -20,3 +20,9 @@ __pycache__/
 
 # 临时下载
 tmp/
+
+# 审核中间产物（批次 staging，合并进 curate 后即失效；保留本地作追溯，不入库）
+curate/staging/
+
+# 运行时会话目录
+sessions/
