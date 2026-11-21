@@ -6,6 +6,9 @@ domains.db
 common.db
 bigram.db
 bigram.db.bak-*
+# 外部来源搭配增量（本机生成的中间产物，不入库）
+output/context_prior_ext.db
+output/bigram_merged.db
 output/domains/*.txt
 VERSION.json
 *.tmp
