@@ -29,3 +29,6 @@ sessions/
 
 # 本机语料挖掘工具（含内部库路径，不入库）
 tools/mine_input_strings.py
+
+# 项目宪法（仅本地，不入库）
+taishen-dict.md
